@@ -88,9 +88,10 @@ async fn search(
     searcher: tauri::State<'_, Mutex<Searcher>>,
     query: SearchQuery,
     limit: usize,
-) -> Result<Vec<Book>, ()> {
+    offset: usize,
+) -> Result<(Vec<Book>, usize), ()> {
     info!("Search: {query:?}");
-    Ok(searcher.lock().await.search(&query, limit))
+    Ok(searcher.lock().await.search(&query, limit, offset))
 }
 
 #[tauri::command]
@@ -110,7 +111,7 @@ async fn create_index(
 ) -> Result<(), String> {
     let mut searcher = searcher.lock().await;
     let compressor = if create_index_config.compressor.is_empty() {
-        "brotli"
+        "none"
     } else {
         &create_index_config.compressor
     };

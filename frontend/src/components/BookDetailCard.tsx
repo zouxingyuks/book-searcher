@@ -24,7 +24,7 @@ import RootContext from '../store';
 import ExternalLink from './ExternalLink';
 import { Book } from '../scripts/searcher';
 import { getDownloadLinkFromIPFS } from '../scripts/ipfs';
-import getCoverImageUrl from '../scripts/cover';
+import { getCoverImageUrl, getMd5CoverImageUrl, white_pic } from '../scripts/cover';
 import IpfsDownloadButton from './IpfsDownloadButton';
 
 const Preview = React.lazy(() => import('./Preview'));
@@ -54,6 +54,7 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({ book }) => {
   const { t } = useTranslation();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [ipfsCidCopied, setIpfsCidCopied] = useState(false);
+  const [md5Copied, setMd5Copied] = useState(false);
 
   const {
     id,
@@ -79,15 +80,32 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({ book }) => {
         variant="outline"
       >
         <CardHeader>
-          <Flex align="center" justify="space-between" gap="2">
-            <Heading as="h3" fontSize={['xl', '2xl', '2xl']} flexShrink={0} flex={1} minW="0">
+          <Flex
+            align="center"
+            flexWrap={{ base: 'wrap', lg: 'nowrap' }}
+            justify="space-between"
+            gap={{ base: '4', lg: '2' }}
+          >
+            <Heading as="h3" fontSize={['xl', '2xl', '2xl']} whiteSpace="break-spaces" minW="0">
               <Text>{title}</Text>
             </Heading>
-            {extension === 'epub' &&
-            ipfs_cid != undefined &&
-            rootContext.ipfsGateways.length > 0 ? (
-              <Button onClick={onOpen}>{t('table.preview')}</Button>
-            ) : null}
+            <Flex gap="2">
+              {md5 != undefined && md5.length > 0 ? (
+                <Button
+                  as={ExternalLink}
+                  minWidth="unset"
+                  href={import.meta.env.VITE_MD5_BASE_URL + md5}
+                >
+                  {t('table.redirect2aa')}
+                </Button>
+              ) : null}
+              {extension === 'epub' &&
+              ipfs_cid != undefined &&
+              ipfs_cid.length > 0 &&
+              rootContext.ipfsGateways.length > 0 ? (
+                <Button onClick={onOpen}>{t('table.preview')}</Button>
+              ) : null}
+            </Flex>
           </Flex>
         </CardHeader>
         <Divider />
@@ -100,8 +118,12 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({ book }) => {
               maxWidth="150px"
               objectFit="contain"
               src={getCoverImageUrl(cover_url)}
-              onError={(event) => {
-                (event.target as HTMLImageElement).style.display = 'none';
+              onError={({ currentTarget }) => {
+                currentTarget.src = getMd5CoverImageUrl(book.md5);
+                currentTarget.onerror = () => {
+                  currentTarget.style.display = 'none';
+                  currentTarget.src = white_pic;
+                };
               }}
             />
             <Stack pl={{ base: undefined, md: '20px' }} pt="10px" flex="1">
@@ -113,7 +135,7 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({ book }) => {
                     isTruncated
                     textOverflow="hidden"
                   >
-                    {ipfs_cid != undefined ? (
+                    {ipfs_cid != undefined && ipfs_cid.length > 0 ? (
                       <Button
                         colorScheme="gray"
                         variant="ghost"
@@ -169,14 +191,14 @@ const BookDetailView: React.FC<BookDetailViewProps> = ({ book }) => {
                         size="xs"
                         leftIcon={<LinkIcon />}
                         onClick={() => {
-                          window.open(
-                            import.meta.env.VITE_MD5_BASE_URL + md5,
-                            '_blank',
-                            'noreferrer'
-                          );
+                          navigator.clipboard.writeText(md5?.toLowerCase() ?? 'Unknown');
+                          setMd5Copied(true);
+                          setTimeout(() => {
+                            setMd5Copied(false);
+                          }, 2000);
                         }}
                       >
-                        {md5}
+                        {md5Copied ? t('copied') : md5}
                       </Button>
                     ) ||
                       t('book.unknown') ||

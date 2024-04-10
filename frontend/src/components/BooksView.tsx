@@ -1,17 +1,27 @@
-import { Box, TableContainer, Tag, Image, Button } from '@chakra-ui/react';
+import {
+  Box,
+  TableContainer,
+  Tag,
+  Image,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverArrow,
+  PopoverBody
+} from '@chakra-ui/react';
 import { FilterFn, createColumnHelper } from '@tanstack/react-table';
-import React, { useContext, useState } from 'react';
+import React, { useContext } from 'react';
 import { filesize as formatFileSize } from 'filesize';
 import { useTranslation } from 'react-i18next';
 import MediaQuery from 'react-responsive';
 
-import DataTable from './DataTable';
+import DataTable, { type OnPaginationChange, type PaginationState } from './DataTable';
 import BookCardList from './BookCardList';
 import RootContext from '../store';
 import { Book } from '../scripts/searcher';
 
 import BookDetailView from './BookDetailCard';
-import getCoverImageUrl from '../scripts/cover';
+import { getCoverImageUrl, getMd5CoverImageUrl, white_pic } from '../scripts/cover';
 import IpfsDownloadButton from './IpfsDownloadButton';
 
 const columnHelper = createColumnHelper<Book>();
@@ -37,9 +47,12 @@ const arrFilter: FilterFn<Book> = (row, columnId, filterValue: string[]) => {
 
 export interface BooksViewProps {
   books: Book[];
+  pagination: PaginationState;
+  setPagination: OnPaginationChange;
+  pageCount: number;
 }
 
-const BooksView: React.FC<BooksViewProps> = ({ books }) => {
+const BooksView: React.FC<BooksViewProps> = ({ books, pagination, setPagination, pageCount }) => {
   const { t } = useTranslation();
   const rootContext = useContext(RootContext);
 
@@ -48,21 +61,53 @@ const BooksView: React.FC<BooksViewProps> = ({ books }) => {
       header: '',
       cell: (cell) => {
         const cover = cell.getValue();
+        const md5 = cell.row.original.md5;
         return (
-          <Image
-            referrerPolicy="no-referrer"
-            htmlWidth="70%"
-            src={getCoverImageUrl(cover)}
-            onError={(event) => {
-              (event.target as HTMLImageElement).src =
-                'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==';
-            }}
-          />
+          <Popover
+            trigger="hover"
+            closeDelay={0}
+            openDelay={0}
+            placement="right"
+            autoFocus={false}
+            matchWidth={true}
+          >
+            <PopoverTrigger>
+              <Image
+                referrerPolicy="no-referrer"
+                htmlWidth="70%"
+                src={getCoverImageUrl(cover)}
+                onError={({ currentTarget }) => {
+                  currentTarget.src = getMd5CoverImageUrl(md5);
+                  currentTarget.onerror = () => {
+                    currentTarget.style.display = 'none';
+                    currentTarget.src = white_pic;
+                  };
+                }}
+              />
+            </PopoverTrigger>
+            <PopoverContent width="fit-content">
+              <PopoverArrow />
+              <PopoverBody width="200px" padding={[0, 0]}>
+                <Image
+                  htmlWidth="200px"
+                  referrerPolicy="no-referrer"
+                  src={getCoverImageUrl(cover)}
+                  onError={({ currentTarget }) => {
+                    currentTarget.src = getMd5CoverImageUrl(md5);
+                    currentTarget.onerror = () => {
+                      currentTarget.style.display = 'none';
+                      currentTarget.src = white_pic;
+                    };
+                  }}
+                />
+              </PopoverBody>
+            </PopoverContent>
+          </Popover>
         );
       },
       enableColumnFilter: false,
       enableSorting: false,
-      meta: { width: '30px', breakpoint: 'lg' }
+      meta: { width: '30px', breakpoint: 'md' }
     }),
     columnHelper.accessor('title', {
       header: t('book.title') ?? 'Title',
@@ -81,7 +126,13 @@ const BooksView: React.FC<BooksViewProps> = ({ books }) => {
       sortingFn: 'text',
       sortUndefined: 1,
       enableColumnFilter: false,
-      meta: { width: '18%', breakpoint: 'md' }
+      meta: {
+        width: {
+          xl: '18%',
+          lg: '12%'
+        },
+        breakpoint: 'md'
+      }
     }),
     columnHelper.accessor(
       'extension',
@@ -100,7 +151,7 @@ const BooksView: React.FC<BooksViewProps> = ({ books }) => {
           cell: (cell) => renderer(cell.getValue()),
           enableSorting: false,
           filterFn: arrFilter,
-          meta: { breakpoint: 'lg', filterRenderer: renderer }
+          meta: { breakpoint: 'md', filterRenderer: renderer }
         };
       })()
     ),
@@ -111,7 +162,9 @@ const BooksView: React.FC<BooksViewProps> = ({ books }) => {
         return <Box>{formatFileSize(filesize) as string}</Box>;
       },
       enableColumnFilter: false,
-      meta: { breakpoint: 'lg' }
+      meta: {
+        breakpoint: 'lg'
+      }
     }),
     columnHelper.accessor(
       'language',
@@ -131,7 +184,7 @@ const BooksView: React.FC<BooksViewProps> = ({ books }) => {
           enableSorting: false,
           filterFn: arrFilter,
           meta: {
-            breakpoint: 'lg',
+            breakpoint: 'md',
             filterRenderer: renderer
           }
         };
@@ -173,8 +226,12 @@ const BooksView: React.FC<BooksViewProps> = ({ books }) => {
           enableSorting: false,
           enableColumnFilter: false,
           meta: {
-            width: '90px',
-            breakpoint: 'lg'
+            width: {
+              xl: '90px',
+              lg: '60px',
+              md: '40px'
+            },
+            breakpoint: 'md'
           }
         };
       })()
@@ -198,7 +255,9 @@ const BooksView: React.FC<BooksViewProps> = ({ books }) => {
           <DataTable
             data={data}
             columns={columns}
-            pageSize={20}
+            pagination={pagination}
+            setPagination={setPagination}
+            pageCount={pageCount}
             filterSchema={{ extension: extensions, language: languages }}
             sx={{ tableLayout: 'fixed' }}
             renderSubComponent={(row) => <BookDetailView book={row.original} />}
@@ -211,7 +270,9 @@ const BooksView: React.FC<BooksViewProps> = ({ books }) => {
           my={{ base: 2, md: 4 }}
           data={data}
           columns={columns}
-          pageSize={20}
+          pagination={pagination}
+          setPagination={setPagination}
+          pageCount={pageCount}
           filterSchema={{ extension: extensions, language: languages }}
           renderSubComponent={(row) => <BookDetailView book={row.original} />}
         />

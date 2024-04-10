@@ -2,65 +2,48 @@ import React, { useEffect } from 'react';
 import {
   Collapse,
   Flex,
-  Icon,
-  IconButton,
-  IconButtonProps,
   TableProps,
   Text,
   useColorMode,
   Card,
-  CardHeader,
   Image,
   Box,
   CardBody,
-  Stack,
-  Tag
+  Tag,
+  Spacer,
+  Center
 } from '@chakra-ui/react';
 import {
   type ColumnDef,
   type PaginationState,
   type Row,
-  flexRender,
   getCoreRowModel,
   getExpandedRowModel,
-  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
   getFilteredRowModel
 } from '@tanstack/react-table';
-import { TbChevronLeft, TbChevronRight, TbChevronsLeft, TbChevronsRight } from 'react-icons/tb';
 import { useTranslation } from 'react-i18next';
 import { Book } from '../scripts/searcher';
 import { filesize as formatFileSize } from 'filesize';
-import getCoverImageUrl from '../scripts/cover';
+import { getCoverImageUrl, getMd5CoverImageUrl, white_pic } from '../scripts/cover';
+import { OnPaginationChange } from './DataTable';
+import Pagination from './Pagination';
+import getColorScheme from '../data/color';
+import IpfsDownloadButton from './IpfsDownloadButton';
+import RootContext from '../store';
+import MediaQuery from 'react-responsive';
 
-const colorSchemes = [
-  'red',
-  'orange',
-  'yellow',
-  'green',
-  'teal',
-  'blue',
-  'cyan',
-  'purple',
-  'pink',
-  'gray'
-];
-
-const rendererExtension = (value: string) => {
-  const colorScheme = colorSchemes[value.charCodeAt(0) % colorSchemes.length];
-  return <Tag colorScheme={colorScheme}>{value}</Tag>;
-};
-
-const rendererLanguage = (value: string) => {
-  const colorScheme = colorSchemes[value.length % colorSchemes.length];
-  return <Tag colorScheme={colorScheme}>{value}</Tag>;
+const rendererTag = (value: string) => {
+  return <Tag colorScheme={getColorScheme(value)}>{value}</Tag>;
 };
 
 export interface BookCardListProps<Data extends object> extends TableProps {
   data: Data[];
   columns: ColumnDef<Data, any>[];
-  pageSize?: number;
+  pagination: PaginationState;
+  setPagination: OnPaginationChange;
+  pageCount: number;
   filterSchema?: { [K in keyof Data]?: Data[K][] };
   renderSubComponent: (row: Row<Data>) => React.ReactNode;
 }
@@ -68,17 +51,16 @@ export interface BookCardListProps<Data extends object> extends TableProps {
 export default function BookCardList<Data extends object>({
   data,
   columns,
-  pageSize = 20,
+  pagination,
+  setPagination,
+  pageCount,
   filterSchema = {},
   renderSubComponent,
   ...props
 }: BookCardListProps<Data>) {
   const { t } = useTranslation();
   const { colorMode } = useColorMode();
-  const [pagination, setPagination] = React.useState<PaginationState>({
-    pageSize,
-    pageIndex: 0
-  });
+  const rootContext = React.useContext(RootContext);
 
   const table = useReactTable({
     columns,
@@ -87,6 +69,7 @@ export default function BookCardList<Data extends object>({
     state: {
       pagination
     },
+    pageCount,
 
     enableHiding: true,
 
@@ -97,7 +80,8 @@ export default function BookCardList<Data extends object>({
     getRowCanExpand: () => true,
     getExpandedRowModel: getExpandedRowModel(),
 
-    getPaginationRowModel: getPaginationRowModel(),
+    manualPagination: true,
+    // getPaginationRowModel: getPaginationRowModel(),
     onPaginationChange: setPagination
   });
 
@@ -130,25 +114,45 @@ export default function BookCardList<Data extends object>({
               maxW="min(24%, 100px)"
               objectFit="cover"
               src={getCoverImageUrl(book.cover_url)}
-              onError={(event) => {
-                (event.target as HTMLImageElement).style.display = 'none';
+              onError={({ currentTarget }) => {
+                currentTarget.src = getMd5CoverImageUrl(book.md5);
+                currentTarget.onerror = () => {
+                  currentTarget.style.display = 'none';
+                  currentTarget.src = white_pic;
+                };
               }}
             />
 
             <CardBody alignSelf="center">
-              <Text marginBottom={2} fontSize="lg" noOfLines={2}>
-                {book.title}
-              </Text>
+              <Flex>
+                <Box>
+                  <Text marginBottom={2} fontSize="lg" noOfLines={2}>
+                    {book.title}
+                  </Text>
 
-              <Text marginBottom={2} color={'gray.500'} fontSize="xs" noOfLines={2}>
-                {book.author.length > 0 ? book.author : ''}
-                {book.author.length > 0 && book.publisher != undefined ? ' - ' : ''}
-                {book.publisher != undefined ? book.publisher : ''}
-              </Text>
-              <div>
-                {rendererExtension(book.extension)} {rendererLanguage(book.language)}{' '}
-                {formatFileSize(book.filesize) as string}
-              </div>
+                  <Text marginBottom={2} color={'gray.500'} fontSize="xs" noOfLines={2}>
+                    {book.author.length > 0 ? book.author : ''}
+                    {book.author.length > 0 && book.publisher != undefined ? ' - ' : ''}
+                    {book.publisher != undefined ? book.publisher : ''}
+                  </Text>
+                  <div>
+                    {rendererTag(book.extension)} {rendererTag(book.language)}{' '}
+                    {formatFileSize(book.filesize) as string}
+                  </div>
+                </Box>
+
+                <Spacer />
+
+                <MediaQuery minWidth={600}>
+                  <Center width="80px" justifyContent="center">
+                    {book.ipfs_cid != undefined &&
+                    book.ipfs_cid.length > 0 &&
+                    rootContext.ipfsGateways.length > 0 ? (
+                      <IpfsDownloadButton book={book} onlyIcon></IpfsDownloadButton>
+                    ) : null}
+                  </Center>
+                </MediaQuery>
+              </Flex>
             </CardBody>
           </Card>
 
@@ -163,58 +167,18 @@ export default function BookCardList<Data extends object>({
           <Text color={colorMode === 'light' ? 'gray.400' : 'gray.600'}>{t('table.no_data')}</Text>
         </Flex>
       )}
-      <Flex w="full" mt={4} mr={2} justify="flex-end" wrap="wrap">
-        <IconButton
-          aria-label={t('table.first_page')}
-          title={t('table.first_page') ?? ''}
-          icon={<Icon as={TbChevronsLeft} />}
-          mr={1}
-          display={{ base: 'none', md: 'inline-flex' }}
-          onClick={() => table.setPageIndex(0)}
-          disabled={!table.getCanPreviousPage()}
-        />
-        <IconButton
-          aria-label={t('table.previous_page')}
-          title={t('table.previous_page') ?? ''}
-          icon={<Icon as={TbChevronLeft} />}
-          mr={1}
-          onClick={() => table.previousPage()}
-          disabled={!table.getCanPreviousPage()}
-        />
-        {Array.from({ length: table.getPageCount() }, (_, i) => i).map((pageIndex) => {
-          const title = t('table.page', { page: pageIndex + 1 });
-          const disabled = pagination.pageIndex === pageIndex;
-          const style: Partial<IconButtonProps> = disabled ? { colorScheme: 'blue' } : {};
-          return (
-            <IconButton
-              aria-label={title}
-              title={title}
-              key={pageIndex}
-              icon={<Text>{pageIndex + 1}</Text>}
-              mr={1}
-              onClick={() => table.setPageIndex(pageIndex)}
-              disabled={disabled}
-              {...style}
-            />
-          );
-        })}
-        <IconButton
-          aria-label={t('table.next_page')}
-          title={t('table.next_page') ?? ''}
-          icon={<Icon as={TbChevronRight} />}
-          mr={{ base: 0, md: 1 }}
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
-        />
-        <IconButton
-          aria-label={t('table.last_page')}
-          title={t('table.last_page') ?? ''}
-          icon={<Icon as={TbChevronsRight} />}
-          display={{ base: 'none', md: 'inline-flex' }}
-          onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-          disabled={!table.getCanNextPage()}
-        />
-      </Flex>
+      <Pagination
+        w="full"
+        mt={4}
+        mr={2}
+        pageCount={table.getPageCount()}
+        pageIndex={pagination.pageIndex}
+        setPageIndex={table.setPageIndex}
+        canPreviousPage={table.getCanPreviousPage()}
+        previousPage={table.previousPage}
+        canNextPage={table.getCanNextPage()}
+        nextPage={table.nextPage}
+      />
     </Box>
   );
 }
